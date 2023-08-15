@@ -363,12 +363,11 @@ int floatFloat2Int(unsigned uf)
  */
 unsigned floatPower2(int x)
 {
-  int exp = 127 + x;
-  if (exp >= 127)
+  if (x > 127)
     return 2139095040;
-  if (exp >= -126)
-    return exp + 127 << 23;
-  if (exp + 126 >= -23)
-    return 1 << exp + 126 + 23;
+  if (x >= -126)
+    return x + 127 << 23;
+  if (x + 126 >= -23)
+    return 1 << x + 126 + 23;
   return 0;
 }
