@@ -17,7 +17,7 @@ StartFun:
 # Return the number of positive words (>0) contained in src.
 #
 # Include your name and ID here.
-#
+# author: suzukaze
 # Describe how and why you modified the baseline code.
 #
 ##################################################################
@@ -33,18 +33,18 @@ ncopy:
 	andq %rdx,%rdx		# len <= 0?
 	jle Done		# if so, goto Done:
 
-Loop:	mrmovq (%rdi), %r10	# read val from src...
-	rmmovq %r10, (%rsi)	# ...and store it to dst
-	andq %r10, %r10		# val <= 0?
+	irmovq $1,%r8 # (move out of loop)
+	irmovq $8,%r9 # (move out of loop too)
+Loop:
+	mrmovq (%rdi),%r10	# read val from src...
+	rmmovq %r10,(%rsi)	# ...and store it to dst
+	andq %r10,%r10		# val <= 0?
 	jle Npos		# if so, goto Npos:
-	irmovq $1, %r10
-	addq %r10, %rax		# count++
-Npos:	irmovq $1, %r10
-	subq %r10, %rdx		# len--
-	irmovq $8, %r10
-	addq %r10, %rdi		# src++
-	addq %r10, %rsi		# dst++
-	andq %rdx,%rdx		# len > 0?
+	addq %r8,%rax		# count++
+Npos:
+	addq %r9,%rdi		# src++
+	addq %r9,%rsi		# dst++
+	subq %r8,%rdx		# len--(and len > 0?)
 	jg Loop			# if so, goto Loop:
 ##################################################################
 # Do not modify the following section of code
@@ -63,8 +63,8 @@ EndFun:
 	.align 8
 src:
 	.quad -1
-	.quad -2
-	.quad 3
+	.quad 2
+	.quad -3
 	.quad 4
 	.quad 0xbcdefa # This shouldn't get moved
 
