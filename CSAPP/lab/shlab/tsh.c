@@ -1,7 +1,7 @@
 /*
  * tsh - A tiny shell program with job control
  *
- * author: suzukaze
+ * author: Suzukaze
  */
 
 #define __USE_POSIX
@@ -219,8 +219,12 @@ void eval(char *cmdline)
     {
         if (sigprocmask(SIG_SETMASK, &prev, NULL) == -1) /* child process should unblock */
             unix_error("sigprocmask error");
-        Signal(SIGINT, SIG_DFL); /* reset child process' signal handler */
-        Signal(SIGTSTP, SIG_DFL);
+        // Signal(SIGINT, SIG_DFL); /* reset child process' signal handler */
+        // Signal(SIGTSTP, SIG_DFL);
+        /*
+            因为execve后该进程的所有内容，包括信号处理程序以及文件描述符等，都会重置成像是运行了一个新程序，
+            除了进程id不变，所以这里的设置是没有必要的
+         */
 
         if (setpgid(0, 0) == -1)
             unix_error("setpgid error");

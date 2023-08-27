@@ -1,4 +1,4 @@
-#author: suzukaze
+# author: Suzukaze
 
 # stage		iaddq V,rB
 # fetch 	icode:ifun <-- M1[PC]
