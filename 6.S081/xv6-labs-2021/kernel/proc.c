@@ -138,6 +138,14 @@ found:
     return 0;
   }
 
+  if ((p->pagetable = (pagetable_t)kalloc()) == 0)
+  {
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
+  ((struct usyscall *)p->pagetable)->pid = p->pid;
+
   // An empty user page table.
   p->pagetable = proc_pagetable(p);
   if (p->pagetable == 0)
@@ -210,6 +218,15 @@ proc_pagetable(struct proc *p)
     return 0;
   }
 
+  // map the usyscall
+  if (mappages(pagetable, USYSCALL, PGSIZE, (uint64)p->pagetable, PTE_R) < 0)
+  {
+    uvmunmap(pagetable, TRAMPOLINE, 1, 0);
+    uvmunmap(pagetable, USYSCALL, 1, 0);
+    uvmfree(pagetable, 0);
+    return 0;
+  }
+
   return pagetable;
 }
 
@@ -220,6 +237,7 @@ proc_freepagetable(pagetable_t pagetable, uint64 sz)
 {
   uvmunmap(pagetable, TRAMPOLINE, 1, 0);
   uvmunmap(pagetable, TRAPFRAME, 1, 0);
+  uvmunmap(pagetable, USYSCALL, 1, 0);
   uvmfree(pagetable, sz);
 }
 
@@ -308,7 +326,6 @@ fork(void)
     return -1;
   }
   np->sz = p->sz;
-  np->mask = p->mask;
 
   // copy saved user registers.
   *(np->trapframe) = *(p->trapframe);
@@ -701,12 +718,4 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
-}
-
-uint64 proc_num(void)
-{
-  uint64 num = 0;
-  for (int i = 0; i < NPROC; i++)
-    num += proc[i].state != UNUSED;
-  return num;
 }
