@@ -11,7 +11,7 @@ uint64
 sys_exit(void)
 {
   int n;
-  if(argint(0, &n) < 0)
+  if (argint(0, &n) < 0)
     return -1;
   exit(n);
   return 0;  // not reached
@@ -33,7 +33,7 @@ uint64
 sys_wait(void)
 {
   uint64 p;
-  if(argaddr(0, &p) < 0)
+  if (argaddr(0, &p) < 0)
     return -1;
   return wait(p);
 }
@@ -44,11 +44,11 @@ sys_sbrk(void)
   int addr;
   int n;
 
-  if(argint(0, &n) < 0)
+  if (argint(0, &n) < 0)
     return -1;
-  
+
   addr = myproc()->sz;
-  if(growproc(n) < 0)
+  if (growproc(n) < 0)
     return -1;
   return addr;
 }
@@ -60,12 +60,14 @@ sys_sleep(void)
   uint ticks0;
 
 
-  if(argint(0, &n) < 0)
+  if (argint(0, &n) < 0)
     return -1;
   acquire(&tickslock);
   ticks0 = ticks;
-  while(ticks - ticks0 < n){
-    if(myproc()->killed){
+  while (ticks - ticks0 < n)
+  {
+    if (myproc()->killed)
+    {
       release(&tickslock);
       return -1;
     }
@@ -80,7 +82,31 @@ sys_sleep(void)
 int
 sys_pgaccess(void)
 {
-  // lab pgtbl: your code here.
+  uint64 start_addr, bitmask;
+  int num;
+  if (argaddr(0, &start_addr) < 0)
+    return -1;
+  if (argint(1, &num) < 0)
+    return -1;
+  if (argaddr(2, &bitmask) < 0)
+    return -1;
+
+  if (num > 64)
+    return -1;
+
+  uint64 res = 0;
+  pte_t *pte;
+  for (int i = 0; i < num; i++)
+  {
+    pte = walk(myproc()->pagetable, start_addr + i, 0);
+    int t = *pte >> 6 & 1;
+    res = res << 1 | t;
+    if (t)
+      *pte ^= PTE_A;
+  }
+
+
+
   return 0;
 }
 #endif
@@ -90,7 +116,7 @@ sys_kill(void)
 {
   int pid;
 
-  if(argint(0, &pid) < 0)
+  if (argint(0, &pid) < 0)
     return -1;
   return kill(pid);
 }
