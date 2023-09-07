@@ -95,17 +95,18 @@ sys_pgaccess(void)
     return -1;
 
   uint64 res = 0;
-  pte_t *pte;
   for (int i = 0; i < num; i++)
   {
-    pte = walk(myproc()->pagetable, start_addr + i, 0);
+    pte_t *pte;
+    if ((pte = walk(myproc()->pagetable, start_addr + PGSIZE * i, 0)) == 0)
+      return -1;
+
     int t = *pte >> 6 & 1;
-    res = res << 1 | t;
+    res = res | t << i;
     if (t)
       *pte ^= PTE_A;
   }
-
-
+  copyout(myproc()->pagetable, bitmask, (char *)&res, sizeof(uint64));
 
   return 0;
 }

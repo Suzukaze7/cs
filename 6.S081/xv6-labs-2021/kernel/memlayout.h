@@ -1,7 +1,3 @@
-#ifndef LAB_PGTBL
-#define LAB_PGTBL
-#endif
-
 // Physical memory layout
 
 // qemu -machine virt is set up like this,
