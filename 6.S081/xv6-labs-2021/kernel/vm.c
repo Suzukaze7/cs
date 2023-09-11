@@ -329,6 +329,9 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
 
+    // printf("---------------\n");
+    // print_pte(*pte);
+
     if ((flags & PTE_S) || (flags & PTE_W) == 0)
     {
       if (mappages(new, i, PGSIZE, pa, flags) != 0)
@@ -336,11 +339,15 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     }
     else
     {
-      if (mappages(new, i, PGSIZE, pa, flags | PTE_S) != 0)
+      if (mappages(new, i, PGSIZE, pa, (flags & ~PTE_W) | PTE_S) != 0)
         goto err;
-      *pte |= PTE_S;
+      *pte = (*pte & ~PTE_W) | PTE_S;
     }
     kadd_ref_cnt(pa);
+
+    // print_pte(*walk(old, i, 0));
+    // print_pte(*walk(new, i, 0));
+    // printf("---------------\n");
 
     // if ((mem = kalloc()) == 0)
     //   goto err;
@@ -473,4 +480,12 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   {
     return -1;
   }
+}
+
+void print_pte(pte_t pte)
+{
+  printf("%p ", PTE2PA(pte));
+  for (int t = PTE_FLAGS(pte), i = 9; ~i; i--)
+    printf("%d", t >> i & 1);
+  printf("\n");
 }

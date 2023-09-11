@@ -11,6 +11,7 @@
 
 void freerange(void *pa_start, void *pa_end);
 
+int flag;
 uint8 ref_cnt[(PHYSTOP - KERNBASE) / PGSIZE];
 
 extern char end[]; // first address after kernel.
@@ -33,7 +34,6 @@ kinit()
 {
   initlock(&kmem.lock, "kmem");
   freerange(end, (void *)PHYSTOP);
-  // printf("%p %p %p %p", ref_cnt, ref_cnt + (PHYSTOP - KERNBASE) / PGSIZE, end, kmem);
 }
 
 void
@@ -43,6 +43,7 @@ freerange(void *pa_start, void *pa_end)
   p = (char *)PGROUNDUP((uint64)pa_start);
   for (; p + PGSIZE <= (char *)pa_end; p += PGSIZE)
     kfree(p);
+  flag = 1;
 }
 
 // Free the page of physical memory pointed at by v,
@@ -57,8 +58,7 @@ kfree(void *pa)
   if (((uint64)pa % PGSIZE) != 0 || (char *)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
 
-  // if ref_cnt is not 0
-
+  // check ref cnt
   if (ref_cnt[REF_IDX((uint64)pa)] && --ref_cnt[REF_IDX((uint64)pa)])
     return;
 
@@ -98,4 +98,9 @@ kalloc(void)
 void kadd_ref_cnt(uint64 pa)
 {
   ref_cnt[REF_IDX(pa)]++;
+}
+
+uint8 kget_ref_cnt(uint64 pa)
+{
+  return ref_cnt[REF_IDX(pa)];
 }
