@@ -11,14 +11,19 @@
 
 void freerange(void *pa_start, void *pa_end);
 
-extern char end[]; // first address after kernel.
-                   // defined by kernel.ld.
+uint8 ref_cnt[(PHYSTOP - KERNBASE) / PGSIZE];
 
-struct run {
+extern char end[]; // first address after kernel.
+// defined by kernel.ld.
+
+
+struct run
+{
   struct run *next;
 };
 
-struct {
+struct
+{
   struct spinlock lock;
   struct run *freelist;
 } kmem;
@@ -27,15 +32,16 @@ void
 kinit()
 {
   initlock(&kmem.lock, "kmem");
-  freerange(end, (void*)PHYSTOP);
+  freerange(end, (void *)PHYSTOP);
+  // printf("%p %p %p %p", ref_cnt, ref_cnt + (PHYSTOP - KERNBASE) / PGSIZE, end, kmem);
 }
 
 void
 freerange(void *pa_start, void *pa_end)
 {
   char *p;
-  p = (char*)PGROUNDUP((uint64)pa_start);
-  for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE)
+  p = (char *)PGROUNDUP((uint64)pa_start);
+  for (; p + PGSIZE <= (char *)pa_end; p += PGSIZE)
     kfree(p);
 }
 
@@ -48,13 +54,18 @@ kfree(void *pa)
 {
   struct run *r;
 
-  if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
+  if (((uint64)pa % PGSIZE) != 0 || (char *)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
+
+  // if ref_cnt is not 0
+
+  if (ref_cnt[REF_IDX((uint64)pa)] && --ref_cnt[REF_IDX((uint64)pa)])
+    return;
 
   // Fill with junk to catch dangling refs.
   memset(pa, 1, PGSIZE);
 
-  r = (struct run*)pa;
+  r = (struct run *)pa;
 
   acquire(&kmem.lock);
   r->next = kmem.freelist;
@@ -72,11 +83,19 @@ kalloc(void)
 
   acquire(&kmem.lock);
   r = kmem.freelist;
-  if(r)
+  if (r)
     kmem.freelist = r->next;
   release(&kmem.lock);
 
-  if(r)
-    memset((char*)r, 5, PGSIZE); // fill with junk
-  return (void*)r;
+  if (r)
+  {
+    memset((char *)r, 5, PGSIZE); // fill with junk
+    ref_cnt[REF_IDX((uint64)r)] = 1;
+  }
+  return (void *)r;
+}
+
+void kadd_ref_cnt(uint64 pa)
+{
+  ref_cnt[REF_IDX(pa)]++;
 }

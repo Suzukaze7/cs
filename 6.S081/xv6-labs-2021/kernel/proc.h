@@ -1,6 +1,5 @@
 // Saved registers for kernel context switches.
-struct context
-{
+struct context {
   uint64 ra;
   uint64 sp;
 
@@ -20,8 +19,7 @@ struct context
 };
 
 // Per-CPU state.
-struct cpu
-{
+struct cpu {
   struct proc *proc;          // The process running on this cpu, or null.
   struct context context;     // swtch() here to enter scheduler().
   int noff;                   // Depth of push_off() nesting.
@@ -43,8 +41,7 @@ extern struct cpu cpus[NCPU];
 // the trapframe includes callee-saved user registers like s0-s11 because the
 // return-to-user path via usertrapret() doesn't return through
 // the entire kernel call stack.
-struct trapframe
-{
+struct trapframe {
   /*   0 */ uint64 kernel_satp;   // kernel page table
   /*   8 */ uint64 kernel_sp;     // top of process's kernel stack
   /*  16 */ uint64 kernel_trap;   // usertrap()
@@ -86,8 +83,7 @@ struct trapframe
 enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
 // Per-process state
-struct proc
-{
+struct proc {
   struct spinlock lock;
 
   // p->lock must be held when using these:
@@ -109,10 +105,4 @@ struct proc
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
-
-  int interval;
-  int tick;
-  uint64 handler;
-  int is_resume;
-  struct trapframe alarm_trapframe;
 };
