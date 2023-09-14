@@ -50,9 +50,7 @@ usertrap(void)
   // save user program counter.
   p->trapframe->epc = r_sepc();
 
-  uint64 scause = r_scause();
-  pte_t *pte = walk(p->pagetable, r_stval(), 0);
-  if (scause == 8)
+  if (r_scause() == 8)
   {
     // system call
 
@@ -73,28 +71,12 @@ usertrap(void)
   {
     // ok
   }
-  else if (scause >= 12 && (PTE_FLAGS(*pte) & PTE_S))
+  else if (r_scause() >= 12 && uvmcow(r_stval(), p->pagetable) == 0)
   {
-    printf("-----------------\n");
-    printf("%d\n", kget_ref_cnt(PTE2PA(*pte)));
-    print_pte(*pte);
-    if (kget_ref_cnt(PTE2PA(*pte)) == 1)
-      *pte = (*pte & ~PTE_S) | PTE_W;
-    else
-    {
-      uint64 new_page;
-      kfree((void *)PTE2PA(*pte));
-      if ((new_page = (uint64)kalloc()) == 0)
-        panic("usertrap cow kalloc");
-      *pte = PA2PTE(new_page) | (PTE_FLAGS(*pte) & ~PTE_S) | PTE_W;
-    }
-    print_pte(*pte);
-    printf("--------------\n");
+    // ok
   }
   else
   {
-    print_pte(*pte);
-    printf("\n");
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     p->killed = 1;
@@ -257,3 +239,34 @@ devintr()
   }
 }
 
+int uvmcow(uint64 va, pagetable_t pagetable)
+{
+  if (va >= MAXVA)
+    return -1;
+
+  va = PGROUNDDOWN(va);
+  pte_t *pte;
+  if ((pte = walk(pagetable, va, 0)) == 0)
+    return -1;
+  uint64 old_pa = PTE2PA(*pte), flags = PTE_FLAGS(*pte);
+
+  if ((flags & PTE_U) == 0)
+    return -1;
+
+  if ((flags & PTE_S) == 0)
+    return 0;
+
+  if (kget_ref_cnt(old_pa) == 1)
+    *pte = (*pte & ~PTE_S) | PTE_W;
+  else
+  {
+    uint64 new_pa;
+
+    if ((new_pa = (uint64)kalloc()) == 0)
+      exit(-1);
+    memmove((void *)new_pa, (void *)old_pa, PGSIZE);
+    *pte = PA2PTE(new_pa) | (((flags & ~PTE_S) | PTE_W) & PXMASK);
+    kfree((void *)old_pa);
+  }
+  return 0;
+}
