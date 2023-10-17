@@ -15,10 +15,11 @@
 #include "sleeplock.h"
 #include "file.h"
 #include "fcntl.h"
+#include "memlayout.h"
 
 // Fetch the nth word-sized system call argument as a file descriptor
 // and return both the descriptor and the corresponding struct file.
-static int
+int
 argfd(int n, int *pfd, struct file **pf)
 {
   int fd;
@@ -132,7 +133,7 @@ sys_link(void)
   }
 
   ilock(ip);
-  if(ip->type == T_DIR || ip->type == T_SYMLINK){
+  if(ip->type == T_DIR){
     iunlockput(ip);
     end_op();
     return -1;
@@ -308,29 +309,7 @@ sys_open(void)
       end_op();
       return -1;
     }
-
     ilock(ip);
-    if (ip->type == T_SYMLINK && (omode & O_NOFOLLOW) == 0)
-      for (int cnt = 0; ip->type == T_SYMLINK; cnt++)
-      {
-        if (cnt > 10)
-        {
-          iunlockput(ip);
-          end_op();
-          return -1;
-        }
-
-        if (readi(ip, 0, (uint64)path, 0, ip->size) < ip->size)
-          panic("open: readi");
-        iunlockput(ip);
-        if ((ip = namei(path)) == 0)
-        {
-          end_op();
-          return -1;
-        }
-        ilock(ip);
-      }
-
     if(ip->type == T_DIR && omode != O_RDONLY){
       iunlockput(ip);
       end_op();
@@ -507,27 +486,79 @@ sys_pipe(void)
   return 0;
 }
 
-uint64 sys_symlink()
+static void vmainit(struct vmalist *vl)
 {
-  int n;
-  char target[MAXPATH], path[MAXPATH];
-  struct inode *ip;
-  if (argstr(0, target, MAXPATH) < 0 || (n = argstr(1, path, MAXPATH)) < 0)
-    return -1;
-
-  begin_op();
-
-  if ((ip = create(path, T_SYMLINK, 0, 0)) == 0)
+  struct vma *head = &vl->head, *vp;
+  head->addr = TRAPFRAME;
+  head->next = head->prev = head;
+  for (vp = vl->vma; vp != vl->vma + NVMA; vp++)
   {
-    end_op();
-    return -1;
+    vp->next = head->next;
+    vp->prev = head->prev;
+    head->next = head->next->prev = vp;
   }
-  if (writei(ip, 0, (uint64)target, 0, n) < n)
-    panic("symlink: writei");
-  iupdate(ip);
-  iunlockput(ip);
 
-  end_op();
+  vl->init = 1;
+}
 
-  return 0;
+static void insert(struct vma *prev, struct vma *vp)
+{
+  vp->next = prev->next;
+  vp->prev = prev->prev;
+  prev->next = prev->next->prev = vp;
+}
+
+static void remove(struct vma *vp)
+{
+  vp->prev->next = vp->next;
+  vp->next->prev = vp->prev;
+}
+
+uint64 sys_mmap()
+{
+  uint64 len;
+  int prot, flags;
+  struct file *f;
+  struct vma *free, *vp;
+  struct vmalist *vl = &myproc()->vl;
+
+  if (argaddr(1, &len) < 0 || argint(2, &prot) < 0 || argint(3, &flags) < 0 || argfd(4, 0, &f) < 0)
+    return -1;
+
+  acquire(&vl->lock);
+
+  if (!vl->init)
+    vmainit(vl);
+
+  free = vl->head.prev;
+  if (free->len)
+    panic("mmap: alloc vma");
+
+  remove(free);
+
+  free->f = f;
+  free->len = len;
+  free->off = 0;
+  free->perm = prot << 2 | flags;
+
+  for (vp = vl->head.next; ; vp = vp->next)
+  {
+    uint64 ra = vp->prev->addr, la = vp->addr + vp->len;
+
+    if (!vp->addr || vp == &vl->head || ra - la >= len)
+    {
+      free->addr = ra - len;
+      insert(vp->prev, free);
+      break;
+    }
+  }
+
+  release(&vl->lock);
+
+  return free->addr;
+}
+
+uint64 sys_munmap()
+{
+  return -1;
 }
