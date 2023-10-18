@@ -5,6 +5,11 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "spinlock.h"
+#include "sleeplock.h"
+#include "proc.h"
+#include "file.h"
+#include "stat.h"
 
 /*
  * the kernel's page table.
@@ -430,5 +435,64 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return 0;
   } else {
     return -1;
+  }
+}
+
+int mmap_alloc()
+{
+  struct vmalist *vl = &myproc()->vl;
+  struct vma *head = &vl->head, *vp;
+  uint64 stval = r_stval(); //printf("%p\n", stval);
+
+  int is_vaild = 0;
+  for (vp = head->next; vp != head && vp->len; vp = vp->next)
+    if (vp->addr <= stval && stval < vp->addr + vp->len)
+    {
+      is_vaild = 1;
+      break;
+    }
+
+  if (!is_vaild)
+    return -1;
+ 
+  uint64 pg_begin = PGROUNDDOWN(stval);
+  pagetable_t pgtbl = myproc()->pagetable;
+  pte_t *pte;
+  if ((pte = walk(pgtbl, pg_begin, 1)) == 0)
+    panic("mmap_alloc: walk");
+
+  //printf("pte: %p\n", pte);
+
+  uint64 new_pa;
+  if ((new_pa = (uint64)kalloc()) == 0)
+    panic("mmap_alloc: kalloc");
+  memset((void *)new_pa, 0, PGSIZE);
+  *pte |= PA2PTE(new_pa) | vp->perm; 
+
+  struct inode *ip = vp->f->ip;
+  ilock(ip);
+
+  if (readi(ip, 1, pg_begin, pg_begin - vp->addr + vp->off, PGSIZE) == -1)
+    return -1;
+  
+  iunlock(ip);
+
+  return 0;
+}
+
+void munmap_unmap(uint64 la, uint64 ra, struct file *f)
+{
+  printf("%p\n", f);
+  pagetable_t pgtbl = myproc()->pagetable;
+  for (; la < ra; la += PGSIZE)
+  {
+    pte_t *pte;
+    if ((pte = walk(pgtbl, la, 0)) != 0 && *pte)
+    {
+      if (f && *pte & PTE_D)
+        filewrite(f, la, PGSIZE);
+      kfree((void *)PTE2PA(*pte));
+      *pte = 0;
+    }
   }
 }

@@ -88,7 +88,7 @@ struct vma
   uint64 addr;
   uint64 off;
   uint64 len;
-  int perm;
+  int perm, flags;
 
   struct vma *prev, *next;
 };
@@ -98,7 +98,6 @@ struct vmalist
   int init;
   struct vma vma[NVMA];
   struct vma head;
-  struct spinlock lock;
 };
 
 // Per-process state

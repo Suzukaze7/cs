@@ -489,12 +489,12 @@ sys_pipe(void)
 static void vmainit(struct vmalist *vl)
 {
   struct vma *head = &vl->head, *vp;
-  head->addr = TRAPFRAME;
+  head->addr = TRAPFRAME - PGSIZE * PGSIZE;
   head->next = head->prev = head;
   for (vp = vl->vma; vp != vl->vma + NVMA; vp++)
   {
     vp->next = head->next;
-    vp->prev = head->prev;
+    vp->prev = head;
     head->next = head->next->prev = vp;
   }
 
@@ -504,7 +504,7 @@ static void vmainit(struct vmalist *vl)
 static void insert(struct vma *prev, struct vma *vp)
 {
   vp->next = prev->next;
-  vp->prev = prev->prev;
+  vp->prev = prev;
   prev->next = prev->next->prev = vp;
 }
 
@@ -512,6 +512,14 @@ static void remove(struct vma *vp)
 {
   vp->prev->next = vp->next;
   vp->next->prev = vp->prev;
+}
+
+void print_vmalist(struct vmalist *vl)
+{
+  printf("--------------------\n");
+  for (struct vma *vp = vl->head.next; vp != &vl->head; vp = vp->next)
+    printf("%p %p\n", vp->addr, vp->len);
+  printf("--------------------\n");
 }
 
 uint64 sys_mmap()
@@ -525,7 +533,10 @@ uint64 sys_mmap()
   if (argaddr(1, &len) < 0 || argint(2, &prot) < 0 || argint(3, &flags) < 0 || argfd(4, 0, &f) < 0)
     return -1;
 
-  acquire(&vl->lock);
+  if ((prot & PROT_READ) && !f->readable)
+    return -1;
+  if (flags == MAP_SHARED && ((prot & PROT_WRITE) && !f->writable))
+    return -1;
 
   if (!vl->init)
     vmainit(vl);
@@ -536,29 +547,61 @@ uint64 sys_mmap()
 
   remove(free);
 
+  filedup(f);
   free->f = f;
   free->len = len;
   free->off = 0;
-  free->perm = prot << 2 | flags;
+  free->perm = prot << 1 | PTE_U | PTE_V;
+  free->flags = flags;
 
   for (vp = vl->head.next; ; vp = vp->next)
   {
     uint64 ra = vp->prev->addr, la = vp->addr + vp->len;
 
-    if (!vp->addr || vp == &vl->head || ra - la >= len)
+    if (!vp->len || vp == &vl->head || ra - la >= len)
     {
-      free->addr = ra - len;
+      free->addr = PGROUNDDOWN(ra - len);
       insert(vp->prev, free);
       break;
     }
   }
-
-  release(&vl->lock);
 
   return free->addr;
 }
 
 uint64 sys_munmap()
 {
+  uint64 addr, len;
+  if (argaddr(0, &addr) < 0 || argaddr(1, &len) < 0)
+    return -1;
+
+  struct vma *vp;
+  struct vmalist *vl = &myproc()->vl;
+
+  for (vp = vl->head.next; vp != &vl->head && vp->len; vp = vp->next)
+  {
+    uint64 la = vp->addr, ra = vp->addr + vp->len;
+    if (la <= addr && addr < ra)
+    {
+      munmap_unmap(addr, addr + len, vp->flags == MAP_SHARED ? vp->f : 0);
+
+      if (vp->addr == addr)
+      {
+        vp->addr += len;
+        vp->off += len;
+      }
+      vp->len -= len;
+
+      if (!vp->len)
+      {
+        fileclose(vp->f);
+        remove(vp);
+        insert(vl->head.prev, vp);
+      }
+
+      return 0;
+    }
+  }
+
   return -1;
 }

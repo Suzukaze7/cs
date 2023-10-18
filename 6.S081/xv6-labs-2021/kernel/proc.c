@@ -5,6 +5,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "fcntl.h"
 
 struct cpu cpus[NCPU];
 
@@ -351,6 +352,15 @@ exit(int status)
       fileclose(f);
       p->ofile[fd] = 0;
     }
+  }
+
+  // free all mmap
+  struct vmalist *vl = &p->vl;
+  for (struct vma *vp = vl->head.next; vp != &vl->head && vp->len; vp = vp->next)
+  {
+    munmap_unmap(vp->addr, vp->addr + vp->len, vp->flags == MAP_SHARED ? vp->f : 0);
+    vp->len = 0;
+    fileclose(vp->f);
   }
 
   begin_op();
