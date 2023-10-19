@@ -486,7 +486,7 @@ sys_pipe(void)
   return 0;
 }
 
-static void vmainit(struct vmalist *vl)
+void vmainit(struct vmalist *vl)
 {
   struct vma *head = &vl->head, *vp;
   head->addr = TRAPFRAME - PGSIZE * PGSIZE;
@@ -560,7 +560,7 @@ uint64 sys_mmap()
 
     if (!vp->len || vp == &vl->head || ra - la >= len)
     {
-      free->addr = PGROUNDDOWN(ra - len);
+      free->addr = ra - len;
       insert(vp->prev, free);
       break;
     }
@@ -571,14 +571,15 @@ uint64 sys_mmap()
 
 uint64 sys_munmap()
 {
+  struct vmalist *vl = &myproc()->vl;
+  if (!vl->init)
+    return -1;
+
   uint64 addr, len;
   if (argaddr(0, &addr) < 0 || argaddr(1, &len) < 0)
     return -1;
 
-  struct vma *vp;
-  struct vmalist *vl = &myproc()->vl;
-
-  for (vp = vl->head.next; vp != &vl->head && vp->len; vp = vp->next)
+  for (struct vma *vp = vl->head.next; vp != &vl->head && vp->len; vp = vp->next)
   {
     uint64 la = vp->addr, ra = vp->addr + vp->len;
     if (la <= addr && addr < ra)

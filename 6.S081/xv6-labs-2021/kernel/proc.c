@@ -4,8 +4,8 @@
 #include "riscv.h"
 #include "spinlock.h"
 #include "proc.h"
-#include "defs.h"
 #include "fcntl.h"
+#include "defs.h"
 
 struct cpu cpus[NCPU];
 
@@ -17,6 +17,7 @@ int nextpid = 1;
 struct spinlock pid_lock;
 
 extern void forkret(void);
+extern void vmainit(struct vmalist *);
 static void freeproc(struct proc *p);
 
 extern char trampoline[]; // trampoline.S
@@ -290,6 +291,24 @@ fork(void)
   }
   np->sz = p->sz;
 
+  struct vmalist *vl = &p->vl, *nvl = &np->vl;
+  if (vl->init)
+  {
+    vmainit(nvl);
+    struct vma *vp = vl->head.next, *nvp = nvl->head.next;
+    for (; vp != &vl->head && vp->len; vp = vp->next, nvp = nvp->next)
+    {
+      nvp->addr = vp->addr;
+      nvp->len = vp->len;
+      nvp->off = vp->off;
+      nvp->perm = vp->perm;
+      nvp->off = vp->off;
+      nvp->flags = vp->flags;
+      nvp->f = vp->f;
+      filedup(nvp->f);
+    }
+  }
+
   // copy saved user registers.
   *(np->trapframe) = *(p->trapframe);
 
@@ -356,12 +375,13 @@ exit(int status)
 
   // free all mmap
   struct vmalist *vl = &p->vl;
-  for (struct vma *vp = vl->head.next; vp != &vl->head && vp->len; vp = vp->next)
-  {
-    munmap_unmap(vp->addr, vp->addr + vp->len, vp->flags == MAP_SHARED ? vp->f : 0);
-    vp->len = 0;
-    fileclose(vp->f);
-  }
+  if (vl->init)
+    for (struct vma *vp = vl->head.next; vp != &vl->head && vp->len; vp = vp->next)
+    {
+      munmap_unmap(vp->addr, vp->addr + vp->len, vp->flags == MAP_SHARED ? vp->f : 0);
+      vp->len = 0;
+      fileclose(vp->f);
+    }
 
   begin_op();
   iput(p->cwd);

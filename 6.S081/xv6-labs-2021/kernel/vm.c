@@ -441,8 +441,11 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
 int mmap_alloc()
 {
   struct vmalist *vl = &myproc()->vl;
+  if (!vl->init)
+    return -1;
+
   struct vma *head = &vl->head, *vp;
-  uint64 stval = r_stval(); //printf("%p\n", stval);
+  uint64 stval = r_stval();
 
   int is_vaild = 0;
   for (vp = head->next; vp != head && vp->len; vp = vp->next)
@@ -460,8 +463,6 @@ int mmap_alloc()
   pte_t *pte;
   if ((pte = walk(pgtbl, pg_begin, 1)) == 0)
     panic("mmap_alloc: walk");
-
-  //printf("pte: %p\n", pte);
 
   uint64 new_pa;
   if ((new_pa = (uint64)kalloc()) == 0)
@@ -482,7 +483,6 @@ int mmap_alloc()
 
 void munmap_unmap(uint64 la, uint64 ra, struct file *f)
 {
-  printf("%p\n", f);
   pagetable_t pgtbl = myproc()->pagetable;
   for (; la < ra; la += PGSIZE)
   {
